@@ -1,7 +1,9 @@
 package info.skyblond.ksp.kotlin.jna
 
+import com.google.devtools.ksp.symbol.KSAnnotation
 import com.google.devtools.ksp.symbol.KSClassDeclaration
 import com.google.devtools.ksp.symbol.KSDeclaration
+import com.google.devtools.ksp.symbol.KSValueParameter
 import info.skyblond.ksp.kotlin.jna.Constants.DEFAULT_VALUE_ANNOTATION_FQ_NAME
 import info.skyblond.ksp.kotlin.jna.Constants.DEFAULT_VALUE_ANNOTATION_SHORT_NAME
 import info.skyblond.ksp.kotlin.jna.Constants.DEFAULT_VALUE_ANNOTATION_VALUE_NAME
@@ -31,10 +33,13 @@ fun KSClassDeclaration.getFieldOrderList(): List<String>? {
     return annotationValueList.map { it as String }
 }
 
-
-fun KSDeclaration.getDefaultValueExpression(): String? =
-    this.annotations.find {
+private fun Sequence<KSAnnotation>.getDefaultValueExpression(): String? =
+    this.find {
         it.shortName.asString() == DEFAULT_VALUE_ANNOTATION_SHORT_NAME
                 && it.annotationType.resolve().declaration.qualifiedName?.asString() == DEFAULT_VALUE_ANNOTATION_FQ_NAME
     }?.arguments?.find { it.name?.asString() == DEFAULT_VALUE_ANNOTATION_VALUE_NAME }?.value as? String
 
+
+fun KSDeclaration.getDefaultValueExpression(): String? = this.annotations.getDefaultValueExpression()
+
+fun KSValueParameter.getDefaultValueExpression(): String? = this.annotations.getDefaultValueExpression()

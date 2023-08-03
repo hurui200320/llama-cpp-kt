@@ -129,7 +129,8 @@ class JNAKotlinVisitor(
                 else -> ""
             }
 
-            val defaultValue = when (typeFQName) {
+
+            val defaultValue = parameter.getDefaultValueExpression() ?: when (typeFQName) {
                 "kotlin.Int", "kotlin.Byte" -> "0"
                 "kotlin.Boolean" -> "false"
                 "kotlin.Float" -> "0.0f"

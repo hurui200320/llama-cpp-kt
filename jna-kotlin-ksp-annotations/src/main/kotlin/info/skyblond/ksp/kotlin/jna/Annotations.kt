@@ -8,6 +8,6 @@ annotation class JNAStructure(
 
 @Suppress("unused")
 @Target(
-    AnnotationTarget.TYPEALIAS, AnnotationTarget.CLASS,
+    AnnotationTarget.TYPEALIAS, AnnotationTarget.CLASS, AnnotationTarget.PROPERTY, AnnotationTarget.VALUE_PARAMETER,
 )
 annotation class DefaultValue(val expression: String)

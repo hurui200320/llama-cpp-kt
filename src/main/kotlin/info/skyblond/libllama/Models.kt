@@ -31,7 +31,8 @@ data class JNAllama_token_data(
 
 @JNAStructure(["data", "size", "sorted"])
 data class JNAllama_token_data_array(
-    val data: Array<llama_token_data>,
+    // llama_token_data[]
+    val data: Pointer,
     val size: Int,
     val sorted: Byte
 )
@@ -51,6 +52,10 @@ data class JNAllama_context_params(
     val n_gpu_layers: Int,
     val main_gpu: Int,
 
+    // TODO: need "#define LLAMA_MAX_DEVICES 16" in llama.h
+    //       by default, if you are not using cuBLAS, the size is 1,
+    //       but with cuBLAS, it's GGML_CUDA_MAX_DEVICES, aka 16
+    @DefaultValue("FloatArray(16)")
     val tensor_split: FloatArray,
 
     val rope_freq_base: Float,

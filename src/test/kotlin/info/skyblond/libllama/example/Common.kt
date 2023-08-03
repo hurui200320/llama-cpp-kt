@@ -247,6 +247,7 @@ data class GPTParams(
 
 fun Boolean.toJNAByte(): Byte = if (this) 1 else 0
 
+
 fun LibLLaMa.llama_context_params_from_gpt_params(
     params: GPTParams,
     // test perplexity when true

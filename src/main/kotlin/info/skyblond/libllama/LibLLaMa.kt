@@ -1,14 +1,20 @@
 package info.skyblond.libllama
 
 import com.sun.jna.Library
-import com.sun.jna.ptr.ByteByReference
-import com.sun.jna.ptr.FloatByReference
+import com.sun.jna.Native
+import com.sun.jna.Pointer
 import com.sun.jna.ptr.IntByReference
 
 @Suppress("FunctionName", "MemberVisibilityCanBePrivate", "unused")
 interface LibLLaMa : Library {
     @Suppress("unused")
     companion object {
+        @JvmStatic
+        val LIB: LibLLaMa by lazy { Native.load("llama", LibLLaMa::class.java) as LibLLaMa }
+
+        @JvmStatic
+        val LLAMA_MAX_DEVICES: Int by lazy { LIB.llama_max_devices() }
+
         const val LLAMA_FILE_MAGIC_GGJT = 0x67676a74u
         const val LLAMA_FILE_MAGIC_GGLA = 0x67676c61u
         const val LLAMA_FILE_MAGIC_GGMF = 0x67676d66u
@@ -116,13 +122,13 @@ interface LibLLaMa : Library {
      * Destination needs to have allocated enough memory.
      * Returns the number of bytes copied
      * */
-    fun llama_copy_state_data(ctx: llama_context, dst: ByteByReference): Int
+    fun llama_copy_state_data(ctx: llama_context, dst: ByteArray): Int
 
     /**
      * Set the state reading from the specified address
      * Returns the number of bytes read
      * */
-    fun llama_set_state_data(ctx: llama_context, src: ByteByReference): Int
+    fun llama_set_state_data(ctx: llama_context, src: ByteArray): Int
 
     /**
      * Save/load session file.
@@ -134,8 +140,8 @@ interface LibLLaMa : Library {
     ): Byte
 
     fun llama_save_session_file(
-        ctx: llama_context, path_session: String, tokens: IntByReference,
-        n_token_count: Int
+        ctx: llama_context, path_session: String,
+        tokens: IntArray, n_token_count: Int
     )
 
     /**
@@ -153,7 +159,7 @@ interface LibLLaMa : Library {
      * Same as llama_eval, but use float matrix input directly.
      * */
     fun llama_eval_embd(
-        ctx: llama_context, embd: FloatByReference,
+        ctx: llama_context, embd: FloatArray,
         n_tokens: Int, n_past: Int, n_threads: Int
     ): Int
 
@@ -171,7 +177,6 @@ interface LibLLaMa : Library {
      * Returns the number of tokens on success, no more than n_max_tokens
      * Returns a negative number on failure - the number of tokens that would have been returned.
      * add_bos: 1 means add, 0 means don't.
-     * TODO: not sure if correct
      * */
     fun llama_tokenize(
         ctx: llama_context, text: String,
@@ -181,7 +186,7 @@ interface LibLLaMa : Library {
 
     fun llama_tokenize_with_model(
         model: llama_model, text: String,
-        tokens: IntByReference, n_max_tokens: Int,
+        tokens: IntArray, n_max_tokens: Int,
         add_bos: Byte
     ): Int
 
@@ -199,7 +204,7 @@ interface LibLLaMa : Library {
      * */
     fun llama_get_vocab(
         ctx: llama_context, strings: Array<String>,
-        scores: FloatByReference, capacity: Int
+        scores: FloatArray, capacity: Int
     ): Int
 
     fun llama_get_vocab_from_model(
@@ -213,14 +218,17 @@ interface LibLLaMa : Library {
      * Can be mutated in order to change the probabilities of the next token
      * Rows: n_tokens
      * Cols: n_vocab
+     *
+     * @return: Float array, size: [llama_n_vocab] (1D).
      * */
-    fun llama_get_logits(ctx: llama_context): FloatByReference
+    fun llama_get_logits(ctx: llama_context): Pointer
 
     /**
      * Get the embeddings for the input
      * shape: n_embd (1-dimensional)
+     * @return float array
      * */
-    fun llama_get_embeddings(ctx: llama_context): FloatByReference
+    fun llama_get_embeddings(ctx: llama_context): Pointer
 
     /**
      * Token Id -> String. Uses the vocabulary in the provided context
@@ -257,7 +265,7 @@ interface LibLLaMa : Library {
      * */
     fun llama_sample_repetition_penalty(
         ctx: llama_context, candidates: llama_token_data_array.ByReference,
-        last_tokens: IntByReference, last_tokens_size: Int,
+        last_tokens: IntArray, last_tokens_size: Int,
         penalty: Float
     )
 
@@ -266,7 +274,7 @@ interface LibLLaMa : Library {
      * */
     fun llama_sample_frequency_and_presence_penalties(
         ctx: llama_context, candidates: llama_token_data_array.ByReference,
-        last_tokens: IntByReference, last_tokens_size: Int,
+        last_tokens: IntArray, last_tokens_size: Int,
         alpha_frequency: Float, alpha_presence: Float
     )
 
@@ -343,7 +351,7 @@ interface LibLLaMa : Library {
      * */
     fun llama_sample_token_mirostat(
         ctx: llama_context, candidates: llama_token_data_array.ByReference,
-        tau: Float, eta: Float, m: Int, mu: FloatByReference
+        tau: Float, eta: Float, m: Int, mu: FloatArray
     ): Int
 
     /**
@@ -356,7 +364,7 @@ interface LibLLaMa : Library {
      * */
     fun llama_sample_token_mirostat_v2(
         ctx: llama_context, candidates: llama_token_data_array.ByReference,
-        tau: Float, eta: Float, mu: FloatByReference
+        tau: Float, eta: Float, mu: FloatArray
     ): Int
 
     /**

@@ -1,9 +1,7 @@
 package info.skyblond.libllama.example
 
 import com.sun.jna.Native
-import info.skyblond.libllama.LibLLaMa
-import info.skyblond.libllama.llama_ftype
-import info.skyblond.libllama.llama_model_quantize_params
+import info.skyblond.libllama.*
 import java.io.File
 
 /**
@@ -13,13 +11,13 @@ fun LibLLaMa.quantize(
     model: File, ftype: llama_ftype, output: File,
     leaveOutputTensor: Boolean = false,
     allowRequantize: Boolean = false,
-    nThread: Int = (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)
+    nThread: Int = getProcessorCount()
 ) {
     val params = llama_model_quantize_default_params()
     if (leaveOutputTensor) params.quantize_output_tensor = 0
     if (allowRequantize) params.allow_requantize = 1
 
-    llama_backend_init(0)
+    initLLaMaBackend() // assuming no numa system
 
     params.nthread = nThread
     params.ftype = ftype.n

@@ -1,77 +1,29 @@
 package info.skyblond.libllama.example
 
-import info.skyblond.libllama.LibLLaMa
-import info.skyblond.libllama.llama_context
-import info.skyblond.libllama.llama_context_params
-import info.skyblond.libllama.llama_model
 import java.util.*
-import kotlin.random.Random
 
-@Suppress("ArrayInDataClass")
-data class GPTParams(
-    /**
-     * RNG seed.
-     * */
-    val seed: Int = Random.nextInt(),
-    /**
-     * number of threads to use during computation
-     * */
-    val nThread: Int = (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1),
 
+/**
+ * Parameters that instruct how to do inference.
+ * */
+data class InferenceParams(
     /**
-     * number of tokens to predict. -1 means infinity
+     * number of tokens to predict (aka when to stop generating). -1 means infinity
      * */
     val nPredict: Int = -1,
     /**
-     * size of the prompt context
-     * */
-    val contextSize: Int = 512,
-    /**
-     * batch size for prompt processing
-     * */
-    val batchSize: Int = 512,
-    /**
-     * grouped-query attention factor.
-     * default 1, for LLaMa 2 70B, use 8
-     * */
-    val gqa: Int = 1,
-    /**
-     * number of tokens to keep from initial prompt
+     * number of tokens to keep when run out of context.
      * */
     val nKeep: Int = 0,
+)
+
+data class GPTParams(
+
     /**
      * max number of chunks to process (-1 = unlimited)
      * */
     val nChunks: Int = -1,
-    /**
-     * number of layers to store in VRAM
-     * */
-    val nGpuLayers: Int = 0,
-    /**
-     * the GPU that is used for scratch and small tensors
-     * */
-    val mainGpu: Int = 0,
-    /**
-     * how split tensors should be distributed across GPUs
-     * */
-    val tensorSplit: FloatArray = floatArrayOf(0.0f),
-    /**
-     * if greater than 0, output the probabilities of top n_probs tokens.
-     * */
-    val nProbs: Int = 0,
-    /**
-     * N rms norm eps.
-     * default: 5.0e-06; use 1e-5 for LLaMAv2.
-     * */
-    val rmsNormEps: Float = 5e-6f,
-    /**
-     * RoPE base frequency
-     * */
-    val ropeFreqBase: Float = 10000.0f,
-    /**
-     * RoPE frequency scaling factor
-     * */
-    val ropeFreqScale: Float = 1.0f,
+
 
     // sampling parameters
     /**
@@ -144,18 +96,7 @@ data class GPTParams(
      * */
     val cfgScale: Float = 1.0f,
 
-    /**
-     * The file path of the model.
-     * */
-    val modelPath: String,
-    /**
-     * model alias
-     * */
-    val modelAlias: String = "unknown",
-    /**
-     * The initial prompt
-     * */
-    val prompt: String = "",
+
     /**
      * The path of prompt cache (eval state)
      * */
@@ -177,14 +118,6 @@ data class GPTParams(
      * */
     val antiprompt: MutableList<String> = LinkedList(),
 
-    /**
-     * apply LoRA adapter
-     * */
-    val loraAdapter: String = "",
-    /**
-     * optional model to use as a base for the layers modified by the LoRA adapter
-     * */
-    val loraBase: String = "",
 
     /**
      * compute HellaSwag score over random tasks from datafile supplied in prompt
@@ -195,14 +128,7 @@ data class GPTParams(
      * */
     val hellaswag_tasks: Int = 400,
 
-    /**
-     * if true, reduce VRAM usage at the cost of performance
-     * */
-    val lowVram: Boolean = false,
-    /**
-     * use f16 instead of f32 for memory kv
-     * */
-    val memoryUseF16: Boolean = true,
+
     /**
      * do not randomize prompt if none provided
      * */
@@ -228,15 +154,7 @@ data class GPTParams(
      * consider newlines as a repeatable token
      * */
     val penalizeNewLine: Boolean = true,
-    /**
-     * use mmap for faster loads. Disabled this will result in a slow loading
-     * but may reduce pageouts if not using memory lock.
-     * */
-    val useMemoryMap: Boolean = true,
-    /**
-     * force system to keep model in RAM rather than swapping or compressing
-     * */
-    val useMemoryLock: Boolean = false,
+
     /**
      * attempt optimizations that help on some NUMA systems
      * if run without this previously, it is recommended to drop the system page cache before using this
@@ -245,63 +163,6 @@ data class GPTParams(
     val numa: Boolean = false,
 )
 
-fun Boolean.toJNAByte(): Byte = if (this) 1 else 0
 
 
-fun LibLLaMa.llama_context_params_from_gpt_params(
-    params: GPTParams,
-    // test perplexity when true
-    perplexity: Boolean = false,
-    // get embedding when true
-    embedding: Boolean = false
-): llama_context_params.ByValue {
-    val llamaParams = llama_context_default_params()
 
-    llamaParams.n_ctx = params.contextSize
-    llamaParams.n_batch = params.batchSize
-    llamaParams.n_gqa = params.gqa
-    llamaParams.rms_norm_eps = params.rmsNormEps
-    llamaParams.n_gpu_layers = params.nGpuLayers
-    llamaParams.main_gpu = params.mainGpu
-    llamaParams.tensor_split = params.tensorSplit
-    llamaParams.low_vram = params.lowVram.toJNAByte()
-    llamaParams.seed = params.seed
-    llamaParams.f16_kv = params.memoryUseF16.toJNAByte()
-    llamaParams.use_mmap = params.useMemoryMap.toJNAByte()
-    llamaParams.use_mlock = params.useMemoryLock.toJNAByte()
-    llamaParams.logits_all = perplexity.toJNAByte()
-    llamaParams.embedding = embedding.toJNAByte()
-    llamaParams.rope_freq_base = params.ropeFreqBase
-    llamaParams.rope_freq_scale = params.ropeFreqScale
-
-    return llamaParams
-}
-
-
-fun LibLLaMa.llama_init_from_gpt_params(
-    params: GPTParams,
-    perplexity: Boolean = false, embedding: Boolean = false
-): Pair<llama_model, llama_context> {
-    val lparams = llama_context_params_from_gpt_params(params, perplexity, embedding)
-    val model = llama_load_model_from_file(params.modelPath, lparams)
-        ?: error("failed to load model: ${params.modelPath}")
-
-    val ctx = llama_new_context_with_model(model, lparams)
-        ?: run {
-            llama_free_model(model)
-            error("failed to create context with model: ${params.modelPath}")
-        }
-
-    if (params.loraAdapter.isNotBlank()) {
-        val err = llama_model_apply_lora_from_file(
-            model, params.loraAdapter, params.loraBase.ifBlank { null }, params.nThread
-        )
-        if (err != 0) {
-            llama_free(ctx)
-            llama_free_model(model)
-            error("failed to apply lora adapter")
-        }
-    }
-
-    return model to ctx
-}

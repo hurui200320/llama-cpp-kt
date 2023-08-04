@@ -3,33 +3,20 @@ package info.skyblond.libllama
 import com.sun.jna.Library
 import com.sun.jna.Native
 import com.sun.jna.Pointer
+import com.sun.jna.ptr.FloatByReference
 import com.sun.jna.ptr.IntByReference
 
 @Suppress("FunctionName", "MemberVisibilityCanBePrivate", "unused")
 interface LibLLaMa : Library {
     @Suppress("unused")
     companion object {
+        const val GIT_VERSION = "4329d1acb01c353803a54733b8eef9d93d0b84b2"
+
         @JvmStatic
         val LIB: LibLLaMa by lazy { Native.load("llama", LibLLaMa::class.java) as LibLLaMa }
 
         @JvmStatic
         val LLAMA_MAX_DEVICES: Int by lazy { LIB.llama_max_devices() }
-
-        const val LLAMA_FILE_MAGIC_GGJT = 0x67676a74u
-        const val LLAMA_FILE_MAGIC_GGLA = 0x67676c61u
-        const val LLAMA_FILE_MAGIC_GGMF = 0x67676d66u
-        const val LLAMA_FILE_MAGIC_GGML = 0x67676d6cu
-        const val LLAMA_FILE_MAGIC_GGSN = 0x6767736eu
-
-        const val LLAMA_FILE_VERSION = 3
-        const val LLAMA_FILE_MAGIC = LLAMA_FILE_MAGIC_GGJT
-        const val LLAMA_FILE_MAGIC_UNVERSIONED = LLAMA_FILE_MAGIC_GGML
-        const val LLAMA_SESSION_MAGIC = LLAMA_FILE_MAGIC_GGSN
-        const val LLAMA_SESSION_VERSION = 1
-
-        const val LLAMA_DEFAULT_SEED = 0xFFFFFFFF
-
-        const val LLAMA_DEFAULT_RMS_EPS = 5e-6f
     }
 
     fun llama_max_devices(): Int
@@ -351,7 +338,7 @@ interface LibLLaMa : Library {
      * */
     fun llama_sample_token_mirostat(
         ctx: llama_context, candidates: llama_token_data_array.ByReference,
-        tau: Float, eta: Float, m: Int, mu: FloatArray
+        tau: Float, eta: Float, m: Int, mu: FloatByReference
     ): Int
 
     /**
@@ -364,7 +351,7 @@ interface LibLLaMa : Library {
      * */
     fun llama_sample_token_mirostat_v2(
         ctx: llama_context, candidates: llama_token_data_array.ByReference,
-        tau: Float, eta: Float, mu: FloatArray
+        tau: Float, eta: Float, mu: FloatByReference
     ): Int
 
     /**

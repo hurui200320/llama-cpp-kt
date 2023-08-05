@@ -12,3 +12,4 @@ plugins {
 rootProject.name = "llama-cpp-kt"
 include("jna-kotlin-ksp")
 include("jna-kotlin-ksp-annotations")
+include("examples")

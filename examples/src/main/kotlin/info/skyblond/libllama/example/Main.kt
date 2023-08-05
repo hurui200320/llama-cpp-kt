@@ -5,6 +5,7 @@ import com.sun.jna.ptr.IntByReference
 import info.skyblond.libllama.*
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.*
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -14,6 +15,7 @@ object Main {
 
     private val globalCtx = AtomicReference<llama_context>()
     private val lib: LibLLaMa
+    private val scanner = Scanner(System.`in`)
 
     /**
      * The flag marking if we are waiting for user input
@@ -34,13 +36,24 @@ object Main {
 
     @JvmStatic
     fun main(args: Array<String>) {
-        val prompt = "I believe the meaning of life is"
+        print("Press enter to continue: ")
+        scanner.nextLine()
+
+        val prompt = """
+            Transcript of a dialog, where the User interacts with an Assistant named Bob. Bob is helpful, kind, honest, good at writing, and never fails to answer the User's requests immediately and with precision.
+
+            User: Hello, Bob.
+            Bob: Hello. How may I help you today?
+            User: Please tell me the largest city in Europe.
+            Bob: Sure. The largest city in Europe is Moscow, the capital of Russia.
+            User:
+        """.trimIndent()
         val contextParameter = lib.getContextParams(
             gqa = 1,
             contextSize = 512,
             batchSize = 1024,
             rmsNormEps = 1e-5f,
-            nGpuLayers = 30,
+            nGpuLayers = 25,
             seed = 12345
         ).also { println("Seed: ${it.seed}") }
         val modelParams = ModelParams(
@@ -51,17 +64,20 @@ object Main {
             scale = 1.0f
         )
         val inferenceParams = InferenceParams(
-            nKeep = 64
+            nKeep = 50,
+            reversePrompts = mutableListOf("User:"),
+            inputPrefix = " ",
+            interactive = true
         )
         val samplingParams = SamplingParams(
             temp = 0.7f,
             topK = 40,
             topP = 0.5f,
-            repeatPenalty = 1.18f,
+            repeatPenalty = 1.22f,
             repeatLastN = 256,
         )
         val persistenceParams = PersistenceParams(
-            cachePath = "/data/llama/cache",
+            cachePath = "",
             promptCacheAll = true,
         )
         val nThread = getProcessorCount()
@@ -78,7 +94,9 @@ object Main {
         } else null
 
         // load status
-        val sessionTokens = if (Files.exists(Path.of(persistenceParams.cachePath))) {
+        val sessionTokens = if (persistenceParams.cachePath.isNotEmpty()
+            && Files.exists(Path.of(persistenceParams.cachePath))
+        ) {
             val data = IntArray(contextParameter.n_ctx)
             val nTokenCountOut = IntByReference(0)
 
@@ -96,7 +114,7 @@ object Main {
         } else mutableListOf()
 
         // tokenize the input prompt
-        var promptProcessedText = " $prompt"
+        val promptProcessedText = " $prompt"
         // tokens of the prompt
         // we tokenize the prompt if any of them is true:
         // + we need to process user input soon (interactiveFirst)
@@ -109,9 +127,10 @@ object Main {
             || promptProcessedText.isNotEmpty()
             || sessionTokens.isEmpty()
         ) {
-            lib.tokenize(ctx, promptProcessedText, true)
+            lib.tokenize(ctx, promptProcessedText, true).toMutableList()
         } else { // otherwise we use the loaded status
-            sessionTokens.toIntArray()
+            // note: we cannot reuse the list, we need copy it
+            sessionTokens.toIntArray().toMutableList()
         }
 
         // Tokenize negative prompt
@@ -136,7 +155,7 @@ object Main {
         var nMatchingSessionTokens = 0
         if (sessionTokens.isNotEmpty()) {
             // loop and count:
-            // if we have already finished the inputTokens, then break
+            // if we have already finished the promptTokenized, then break
             // if the tokenId in loaded session does not match the input tokens
             //      (may come from different mode that don't use loaded session), break
             // otherwise count it as matched
@@ -149,7 +168,7 @@ object Main {
             if (promptProcessedText.isEmpty() && nMatchingSessionTokens == promptTokenized.size) {
                 println("Using full prompt from session file")
             } else if (nMatchingSessionTokens >= promptTokenized.size) {
-                // note: nMatchingSessionTokens will equal to inputTokens.size
+                // note: nMatchingSessionTokens will equal to promptTokenized.size
                 // since we break as soon as they are equal
                 println("Session file is exactly match for prompt")
             } else if (nMatchingSessionTokens < promptTokenized.size / 2) {
@@ -183,9 +202,6 @@ object Main {
         if (inferenceParams.alpacaInstruct) {
             inferenceParams.reversePrompts.add("### Instruction:\n\n")
         }
-
-        // determine newline token
-        val tokenNewline = lib.tokenize(ctx, "\n", false)
 
         // print some info
         println()
@@ -268,8 +284,6 @@ object Main {
 
         var isReversePrompt = false
         var inputEcho = false
-        var needToSaveSession =
-            persistenceParams.cachePath.isNotEmpty() && nMatchingSessionTokens < promptTokenized.size
 
         if (inferenceParams.interactive) {
             println(" - Press Return to return control to LLaMa.")
@@ -303,6 +317,9 @@ object Main {
             lib.evalTokens(ctx, temp, 0, nThread)
             lib.llama_reset_timings(ctx)
         }
+
+        // print the prompt
+        print(promptProcessedText)
 
         // the main loop
         while (nRemain != 0 && !isReversePrompt || inferenceParams.interactive) {
@@ -341,280 +358,274 @@ object Main {
 
                 // try to reuse a matching prefix from the loaded session instead of
                 // re-eval (via n_past)
-                // if (n_session_consumed < (int) sessionTokens.size()) {
-                //     size_t i = 0;
-                //     for ( ; i < tokens.size(); i++) {
-                //         if (embd[i] != sessionTokens[n_session_consumed]) {
-                //             sessionTokens.resize(n_session_consumed);
-                //             break;
-                //         }
-                //
-                //         n_past++;
-                //         n_session_consumed++;
-                //
-                //         if (n_session_consumed >= (int) sessionTokens.size()) {
-                //             ++i;
-                //             break;
-                //         }
-                //     }
-                //     if (i > 0) {
-                //         tokens.erase(tokens.begin(), tokens.begin() + i);
-                //     }
-                // }
-                //
-                // // evaluate tokens in batches
-                // // embd is typically prepared beforehand to fit within a batch, but not always
-                //
-                // if (guidanceCtx) {
-                //     int input_size = 0;
-                //     llama_token* input_buf = NULL;
-                //
-                //     if (n_past_guidance < (int) guidance_inp.size()) {
-                //         // Guidance context should have the same data with these modifications:
-                //         //
-                //         // * Replace the initial prompt
-                //         // * Shift everything by guidance_offset
-                //         embd_guidance = guidance_inp;
-                //         if (tokens.begin() + original_prompt_len < tokens.end()) {
-                //             tokensGuidance.insert(
-                //                 tokensGuidance.end(),
-                //                 tokens.begin() + original_prompt_len,
-                //                 tokens.end()
-                //             );
-                //         }
-                //
-                //         input_buf = tokensGuidance.data();
-                //         input_size = tokensGuidance.size();
-                //         //fprintf(stderr, "\n---------------------\n");
-                //         //for (int i = 0; i < (int) tokensGuidance.size(); i++) {
-                //             //fprintf(stderr, "%s", llama_token_to_str(ctx, embd_guidance[i]));
-                //         //}
-                //         //fprintf(stderr, "\n---------------------\n");
-                //     } else {
-                //         input_buf = tokens.data();
-                //         input_size = tokens.size();
-                //     }
-                //
-                //     for (int i = 0; i < input_size; i += params.n_batch) {
-                //         int n_eval = std::min(input_size - i, params.n_batch);
-                //         if (llama_eval(guidanceCtx, input_buf + i, n_eval, n_past_guidance, params.n_threads)) {
-                //             fprintf(stderr, "%s : failed to eval\n", __func__);
-                //             return 1;
-                //         }
-                //
-                //         n_past_guidance += n_eval;
-                //     }
-                // }
-                //
-                // for (int i = 0; i < (int) tokens.size(); i += params.n_batch) {
-                //     int n_eval = (int) tokens.size() - i;
-                //     if (n_eval > params.n_batch) {
-                //         n_eval = params.n_batch;
-                //     }
-                //     if (llama_eval(ctx, &embd[i], n_eval, n_past, params.n_threads)) {
-                //         fprintf(stderr, "%s : failed to eval\n", __func__);
-                //         return 1;
-                //     }
-                //     n_past += n_eval;
-                // }
-                //
-                // if (tokens.size() > 0 && !path_session.empty()) {
-                //     sessionTokens.insert(sessionTokens.end(), tokens.begin(), tokens.end());
-                //     n_session_consumed = sessionTokens.size();
-                // }
+                if (nSessionConsumed < sessionTokens.size) {
+                    var i = 0
+                    while (i < tokens.size) {
+                        // make sure the sessionTokens are the same as tokens
+                        if (tokens[i] != sessionTokens[nSessionConsumed]) {
+                            while (sessionTokens.size > nSessionConsumed)
+                                sessionTokens.removeLast()
+                            break
+                        }
+                        // accept this cached token
+                        nPast++
+                        nSessionConsumed++
+                        i++
+                        // if we used all cached token, exit loop
+                        if (nSessionConsumed >= sessionTokens.size) {
+                            break
+                        }
+                    }
+                    // removes the cached tokens from token buffer
+                    repeat(i) {
+                        tokens.removeFirst()
+                    }
+                }
+
+                // evaluate tokens in batches
+                // token buffer is typically prepared beforehand to fit within a batch,
+                // but not always
+                if (guidanceCtx != null) {
+                    // if we didn't processed all guidance input,
+                    // process it first
+                    val inputBuffer = if (nPastGuidance < guidanceInputToken.size) {
+                        // Guidance context should have the same data with these modifications:
+                        // * Replace the initial prompt
+                        // * Shift everything by guidance_offset
+                        tokensGuidance.clear()
+                        tokensGuidance.addAll(guidanceInputToken)
+                        // if unprocessed tokens are longer than original,
+                        // add the newer token into guidance buffer.
+                        // otherwise the llama will forget the guidance
+                        if (tokens.size > originalPromptLength) {
+                            tokensGuidance.addAll(tokens.subList(originalPromptLength, tokens.size))
+                        }
+                        // we use our newly created guidance as input
+                        tokensGuidance.toIntArray()
+                    } else {
+                        // just use token
+                        tokens.toIntArray()
+                    }
+
+                    // do inference in batch
+                    for (i in inputBuffer.indices step contextParameter.n_batch) {
+                        // each time process at most batchSize tokens
+                        val nEval = (inputBuffer.size - i).coerceAtMost(contextParameter.n_batch)
+                        check( // here we need to control the tokenSize (n_tokens) to nEval
+                            lib.llama_eval(
+                                guidanceCtx,
+                                inputBuffer.drop(i).take(nEval).toIntArray(), nEval,
+                                nPastGuidance, nThread
+                            ) == 0
+                        ) { "Failed to eval guidance" }
+                        nPastGuidance += nEval
+                    }
+                }
+
+                // do inference on unprocessed tokens
+                for (i in tokens.indices step contextParameter.n_batch) {
+                    val nEval = (tokens.size - i).coerceAtMost(contextParameter.n_batch)
+                    check( // here we need to control the tokenSize (n_tokens) to nEval
+                        lib.llama_eval(
+                            ctx,
+                            tokens.drop(i).take(nEval).toIntArray(), nEval,
+                            nPast, nThread
+                        ) == 0
+                    ) { "Failed to eval" }
+                    nPast += nEval
+                }
+
+                // update the session cache
+                if (tokens.isNotEmpty() && persistenceParams.cachePath.isNotEmpty()) {
+                    sessionTokens.addAll(tokens)
+                    nSessionConsumed = sessionTokens.size
+                }
             }
-            /*
 
-            tokens.clear();
-            tokensGuidance.clear();
+            // now we processed all unprocessed tokens, clear the buffer
+            tokens.clear()
+            tokensGuidance.clear()
 
-            if ((int) inputTokens.size() <= n_consumed && !is_interacting) {
-                llama_token id = lib.sampleToken()
-
+            // if we consumed all input prompt, and we're not waiting for user input
+            // sample the next token
+            if (promptTokenized.size <= nConsumed && !isInteracting) {
+                val tokenId = lib.sampleToken(ctx, samplingParams, lastNTokens, guidanceCtx, guidanceParams.scale)
                 // add it to the context
-                tokens.push_back(id);
-
+                tokens.add(tokenId)
                 // echo this to console
-                input_echo = true;
-
+                inputEcho = true
                 // decrement remaining sampling budget
-                --n_remain;
+                nRemain--
             } else {
                 // some user input remains from prompt or interaction, forward it to processing
-                while ((int) inputTokens.size() > n_consumed) {
-                    tokens.push_back(embd_inp[n_consumed]);
-                    last_n_tokens.erase(last_n_tokens.begin());
-                    last_n_tokens.push_back(embd_inp[n_consumed]);
-                    ++n_consumed;
-                    if ((int) tokens.size() >= params.n_batch) {
-                        break;
+                while (promptTokenized.size > nConsumed) {
+                    tokens.add(promptTokenized[nConsumed])
+                    lastNTokens.removeFirst()
+                    lastNTokens.add(promptTokenized[nConsumed])
+                    nConsumed++
+                    // stop if unprocessed token size reached batch size
+                    // we will leave it to next loop
+                    if (tokens.size >= contextParameter.n_batch) {
+                        break
                     }
                 }
             }
 
             // display text
-            if (input_echo) {
-                for (auto id : tokens) {
-                    printf("%s", llama_token_to_str(ctx, id));
+            if (inputEcho) {
+                for (tokenId in tokens) {
+                    print(lib.llama_token_to_str(ctx, tokenId))
                 }
-                fflush(stdout);
-            }
-            // reset color to default if we there is no pending user input
-            if (input_echo && (int)inputTokens.size() == n_consumed) {
-                console::set_display(console::reset);
             }
 
-            // if not currently processing queued inputs;
-            if ((int) inputTokens.size() <= n_consumed) {
-
+            // if we processed all user input
+            if (promptTokenized.size <= nConsumed) {
                 // check for reverse prompt
-                if (inferenceParams.reversePrompts.size()) {
-                    std::string last_output;
-                    for (auto id : last_n_tokens) {
-                        last_output += llama_token_to_str(ctx, id);
+                if (inferenceParams.reversePrompts.isNotEmpty()) {
+                    val lastOutput = StringBuilder()
+                    for (tokenId in lastNTokens) {
+                        lastOutput.append(lib.llama_token_to_str(ctx, tokenId))
                     }
+                    isReversePrompt = false
+                    // check every reverse prompt and see if it's met
+                    // If we're not running interactively, the reverse prompt might be tokenized
+                    // with some following characters, so we'll compensate for that by widening
+                    // the search window a bit.
+                    for (reversePrompt in inferenceParams.reversePrompts) {
+                        val extraPadding = if (inferenceParams.interactive) 0 else 2
+                        val searchStartPos = if (lastOutput.length > reversePrompt.length + extraPadding) {
+                            lastOutput.length - (reversePrompt.length + extraPadding)
+                        } else 0
 
-                    is_antiprompt = false;
-                    // Check if each of the reverse prompts appears at the end of the output.
-                    // If we're not running interactively, the reverse prompt might be tokenized with some following characters
-                    // so we'll compensate for that by widening the search window a bit.
-                    for (std::string & antiprompt : inferenceParams.reversePrompts) {
-                        size_t extra_padding = params.interactive ? 0 : 2;
-                        size_t search_start_pos = last_output.length() > static_cast<size_t>(antiprompt.length() + extra_padding)
-                            ? last_output.length() - static_cast<size_t>(antiprompt.length() + extra_padding)
-                            : 0;
-
-                        if (last_output.find(antiprompt.c_str(), search_start_pos) != std::string::npos) {
-                            if (params.interactive) {
-                                is_interacting = true;
-                                console::set_display(console::user_input);
+                        if (lastOutput.indexOf(reversePrompt, searchStartPos) != -1) {
+                            if (inferenceParams.interactive) {
+                                isInteracting = true // now we're waiting for user input
                             }
-                            is_antiprompt = true;
-                            fflush(stdout);
-                            break;
+                            isReversePrompt = true
+                            break
                         }
                     }
                 }
 
-                // deal with end of text token in interactive mode
-                if (last_n_tokens.back() == llama_token_eos()) {
-                    if (params.interactive) {
-                        if (inferenceParams.reversePrompts.size() != 0) {
+                // deal with end of text
+                if (lastNTokens.last() == lib.llama_token_eos()) {
+                    if (inferenceParams.interactive) {
+                        // for interactive mode, treat as a reverse prompt
+                        if (inferenceParams.reversePrompts.isNotEmpty()) {
                             // tokenize and inject first reverse prompt
-                            const auto first_antiprompt = ::llama_tokenize(ctx, inferenceParams.reversePrompts.front(), false);
-                            inputTokens.insert(inputTokens.end(), first_antiprompt.begin(), first_antiprompt.end());
-                            is_antiprompt = true;
+                            val firstReversePrompt = lib.tokenize(ctx, inferenceParams.reversePrompts.first(), false)
+                            promptTokenized.addAll(firstReversePrompt.toList())
+                            isReversePrompt = true
                         }
-
-                        is_interacting = true;
-                        printf("\n");
-                        console::set_display(console::user_input);
-                        fflush(stdout);
-                    } else if (params.instruct) {
-                        is_interacting = true;
+                        isInteracting = true
+                        println()
+                    } else if (inferenceParams.alpacaInstruct) {
+                        // for alpaca instruct mode, we're just waiting for next instruction
+                        isInteracting = true
                     }
                 }
 
-                if (n_past > 0 && is_interacting) {
-                    if (params.instruct) {
-                        printf("\n> ");
+                // waiting for user input
+                if (nPast > 0 && isInteracting) {
+                    if (inferenceParams.alpacaInstruct) print("\n> ")
+                    if (inferenceParams.inputPrefixBOS) promptTokenized.add(lib.llama_token_bos())
+                    val buffer = StringBuilder()
+                    if (inferenceParams.inputPrefix.isNotEmpty()) {
+                        buffer.append(inferenceParams.inputPrefix)
+                        print(buffer.toString())
                     }
-
-                    if (params.input_prefix_bos) {
-                        inputTokens.push_back(llama_token_bos());
-                    }
-
-                    std::string buffer;
-                    if (!params.input_prefix.empty()) {
-                        buffer += params.input_prefix;
-                        printf("%s", buffer.c_str());
-                    }
-
-                    std::string line;
-                    bool another_line = true;
+                    // asking user input
+                    var line = ""
+                    var anotherLine = true
                     do {
-                        another_line = console::readline(line, params.multiline_input);
-                        buffer += line;
-                    } while (another_line);
+                        line = scanner.nextLine()
+                        anotherLine = line.trimEnd().lastOrNull() == '\\'
+                        if (anotherLine) {
+                            buffer.append(line.trimEnd().removeSuffix("\\"))
+                                .append("\n")
+                        } else {
+                            buffer.append(line)
+                        }
+                    } while (anotherLine)
 
-                    // done taking input, reset color
-                    console::set_display(console::reset);
-
-                    // Add tokens to tokens only if the input buffer is non-empty
-                    // Entering a empty line lets the user pass control back
-                    if (buffer.length() > 1) {
+                    // check empty input for just return control to keep generating text
+                    if (buffer.length > 1) {
                         // append input suffix if any
-                        if (!params.input_suffix.empty()) {
-                            buffer += params.input_suffix;
-                            printf("%s", params.input_suffix.c_str());
+                        if (inferenceParams.inputSuffix.isNotEmpty()) {
+                            buffer.append(inferenceParams.inputSuffix)
+                            print(inferenceParams.inputSuffix)
                         }
-
                         // instruct mode: insert instruction prefix
-                        if (params.instruct && !is_antiprompt) {
-                            n_consumed = inputTokens.size();
-                            inputTokens.insert(inputTokens.end(), inp_pfx.begin(), inp_pfx.end());
+                        if (inferenceParams.alpacaInstruct && !isReversePrompt) {
+                            nConsumed = promptTokenized.size
+                            promptTokenized.addAll(alpacaInputPrefixToken.toList())
                         }
-
-                        auto line_inp = ::llama_tokenize(ctx, buffer, false);
-                        inputTokens.insert(inputTokens.end(), line_inp.begin(), line_inp.end());
-
+                        val bufferTokenized = lib.tokenize(ctx, buffer.toString(), false)
+                        promptTokenized.addAll(bufferTokenized.toList())
                         // instruct mode: insert response suffix
-                        if (params.instruct) {
-                            inputTokens.insert(inputTokens.end(), inp_sfx.begin(), inp_sfx.end());
+                        if (inferenceParams.alpacaInstruct) {
+                            promptTokenized.addAll(alpacaInputSuffixToken.toList())
                         }
-
-                        n_remain -= line_inp.size();
+                        nRemain -= bufferTokenized.size
                     }
-
-                    input_echo = false; // do not echo this again
+                    // do not echo user input
+                    inputEcho = false
                 }
 
-                if (n_past > 0) {
-                    if (is_interacting) {
-                        // reset grammar state if we're restarting generation
-                        if (grammar != NULL) {
-                            llama_grammar_free(grammar);
-
-                            std::vector<const llama_grammar_element *> grammar_rules(
-                                parsed_grammar.c_rules());
-                            grammar = llama_grammar_init(
-                                grammar_rules.data(), grammar_rules.size(),
-                                parsed_grammar.symbol_ids.at("root"));
-                        }
-                    }
-                    is_interacting = false;
+                if (nPast > 0) {
+                    // reset grammar state if we're restarting generation
+                    // TODO grammar
+//                    if (isInteracting) {
+                    // if (grammar != NULL) {
+                    //     llama_grammar_free(grammar);
+                    //
+                    //     std::vector<const llama_grammar_element *> grammar_rules(
+                    //         parsed_grammar.c_rules());
+                    //     grammar = llama_grammar_init(
+                    //         grammar_rules.data(), grammar_rules.size(),
+                    //         parsed_grammar.symbol_ids.at("root"));
+                    // }
+//                    }
+                    isInteracting = false
                 }
             }
 
-            // end of text token
-            if (!tokens.empty() && tokens.back() == llama_token_eos() && !(params.instruct || params.interactive)) {
-                fprintf(stderr, " [end of text]\n");
-                break;
+            // end of text token for none interactive mode
+            if (tokens.isNotEmpty()
+                && tokens.last() == lib.llama_token_eos()
+                && !inferenceParams.alpacaInstruct
+                && !inferenceParams.interactive
+            ) {
+                println(" [end of text]")
+                break
             }
 
-            // In interactive mode, respect the maximum number of tokens and drop back to user input when reached.
-            if (params.interactive && n_remain <= 0 && params.n_predict != -1) {
-                n_remain = params.n_predict;
-                is_interacting = true;
+            // In interactive mode, respect the maximum number of tokens and drop back to user
+            // input when reached.
+            if (inferenceParams.interactive && nRemain <= 0 && inferenceParams.nPredict != -1) {
+                nRemain = inferenceParams.nPredict
+                isInteracting = true
             }
-            * */
-
         }
 
         // save session
-        // if (!path_session.empty() && params.prompt_cache_all && !params.prompt_cache_ro) {
-        //        fprintf(stderr, "\n%s: saving final output to session file '%s'\n", __func__, path_session.c_str());
-        //        llama_save_session_file(ctx, path_session.c_str(), sessionTokens.data(), sessionTokens.size());
-        //    }
+        if (persistenceParams.cachePath.isNotEmpty()
+            && persistenceParams.promptCacheAll
+            && !persistenceParams.promptCacheReadOnly
+        ) {
+            println("saving final output to session file '${persistenceParams.cachePath}'")
+            lib.llama_save_session_file(
+                ctx, persistenceParams.cachePath,
+                sessionTokens.toIntArray(), sessionTokens.size
+            )
+        }
 
         lib.llama_print_timings(ctx)
         if (guidanceCtx != null)
-            lib.llama_free(ctx)
+            lib.llama_free(guidanceCtx)
         globalCtx.set(null)
         lib.llama_free(ctx)
         lib.llama_free_model(model)
         lib.llama_backend_free()
     }
-
-
 }

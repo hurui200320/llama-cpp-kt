@@ -17,9 +17,13 @@ class JNAKotlinVisitor(
 
     override fun visitClassDeclaration(classDeclaration: KSClassDeclaration, data: Unit) {
         val originalClassName = classDeclaration.simpleName.getShortName()
-        // the class name must start with "JNA" to avoid namespace conflict
-        if (!originalClassName.startsWith("JNA")) return
+        require(originalClassName.startsWith("JNA")) {
+            "the class name must start with \"JNA\" to avoid namespace conflict"
+        }
         val className = originalClassName.removePrefix("JNA")
+
+        if (classDeclaration.isPublic())
+            logger.warn("It's recommended to use private or internal modifier on class to avoid polluting the code completion")
 
         // no @JNAStructure annotation
         val fieldOrderList = classDeclaration.getFieldOrderList() ?: return

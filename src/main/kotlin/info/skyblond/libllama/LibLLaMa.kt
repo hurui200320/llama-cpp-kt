@@ -6,11 +6,14 @@ import com.sun.jna.Pointer
 import com.sun.jna.ptr.FloatByReference
 import com.sun.jna.ptr.IntByReference
 
+/**
+ * llama.h
+ * */
 @Suppress("FunctionName", "MemberVisibilityCanBePrivate", "unused")
 interface LibLLaMa : Library {
     @Suppress("unused")
     companion object {
-        const val GIT_VERSION = "4329d1acb01c353803a54733b8eef9d93d0b84b2"
+        const val GIT_VERSION = "86c32198954a2bc482025703d6875e11f1c2a574"
 
         @JvmStatic
         val LIB: LibLLaMa by lazy { Native.load("llama", LibLLaMa::class.java) as LibLLaMa }

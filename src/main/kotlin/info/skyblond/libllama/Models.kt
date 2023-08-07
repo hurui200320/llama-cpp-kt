@@ -23,7 +23,7 @@ typealias llama_context = Pointer?
  * [p]: probability of the token
  * */
 @JNAStructure(["id", "logit", "p"])
-data class JNAllama_token_data(
+private data class JNAllama_token_data(
     val id: Int,
     val logit: Float,
     val p: Float
@@ -33,7 +33,7 @@ data class JNAllama_token_data(
  * [data] is array of [llama_token_data].
  * */
 @JNAStructure(["data", "size", "sorted"])
-data class JNAllama_token_data_array(
+private data class JNAllama_token_data_array(
     val data: Pointer,
     val size: Int,
     val sorted: Byte
@@ -45,7 +45,7 @@ fun interface llama_progress_callback : Callback {
 }
 
 @JNAStructure
-data class JNAllama_context_params(
+private data class JNAllama_context_params(
     val seed: Int,
     val n_ctx: Int,
     val n_batch: Int,
@@ -103,7 +103,7 @@ fun Int.llama_ftype(): llama_ftype? = llama_ftype.entries.find { it.n == this }
  * [ftype] is [llama_ftype]
  * */
 @JNAStructure(["nthread", "ftype", "allow_requantize", "quantize_output_tensor"])
-data class JNAllama_model_quantize_params(
+private data class JNAllama_model_quantize_params(
     val nthread: Int,
     val ftype: Int,
     val allow_requantize: Byte,
@@ -141,7 +141,7 @@ enum class llama_gretype(val n: Int) {
 fun Int.llama_gretype(): llama_gretype? = llama_gretype.entries.find { it.n == this }
 
 @JNAStructure(["type", "value"])
-data class JNAllama_grammar_element(
+private data class JNAllama_grammar_element(
     // llama_gretype
     val type: Int,
     // Unicode code point or rule ID
@@ -149,7 +149,7 @@ data class JNAllama_grammar_element(
 )
 
 @JNAStructure
-data class JNAllama_timings(
+private data class JNAllama_timings(
     val t_start_ms: Double,
     val t_end_ms: Double,
     val t_load_ms: Double,

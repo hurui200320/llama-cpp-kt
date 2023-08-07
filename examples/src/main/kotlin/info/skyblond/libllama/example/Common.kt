@@ -57,8 +57,6 @@ data class InferenceParams(
 
 /**
  * Parameters for negative guidance prompt. Aka words you want to avoid.
- *
- * TODO: Somehow make it can be positive, aka encourage to generate?
  * */
 data class GuidanceParams(
     /**

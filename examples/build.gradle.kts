@@ -11,7 +11,7 @@ repositories {
 
 dependencies {
     implementation(project(":"))
-
+    implementation("io.javalin:javalin:5.6.1")
     testImplementation(kotlin("test"))
 }
 

@@ -36,11 +36,9 @@ object Main {
 
     @JvmStatic
     fun main(args: Array<String>) {
-        print("Press enter to continue: ")
-        scanner.nextLine()
-
         val prompt = """
             Transcript of a dialog, where the User interacts with an Assistant named Bob. Bob is helpful, kind, honest, good at writing, and never fails to answer the User's requests immediately and with precision.
+            Bob must use prompt "User:" to ask user's request, and must respond with prefix "Bob:".
 
             User: Hello, Bob.
             Bob: Hello. How may I help you today?
@@ -53,18 +51,18 @@ object Main {
             contextSize = 512,
             batchSize = 1024,
             rmsNormEps = 1e-5f,
-            nGpuLayers = 25,
-            seed = 12345
+            nGpuLayers = 10,
+//            seed = 12345
         ).also { println("Seed: ${it.seed}") }
         val modelParams = ModelParams(
-            modelPath = "/data/llama-model/ggml-llama-2-7b-chat-q8_0.bin"
+            modelPath = "/data/llama-model/ggml-llama-2-7b-chat-f16.bin"
         )
         val guidanceParams = GuidanceParams(
             negativePrompt = "",
             scale = 1.0f
         )
         val inferenceParams = InferenceParams(
-            nKeep = 50,
+            nKeep = 72,
             reversePrompts = mutableListOf("User:"),
             inputPrefix = " ",
             interactive = true
@@ -110,7 +108,7 @@ object Main {
             }
             lib.llama_set_rng_seed(ctx, contextParameter.seed)
             println("Loaded ${nTokenCountOut.value} tokens from session file '${persistenceParams.cachePath}'")
-            data.toMutableList()
+            data.copyOf(nTokenCountOut.value).toMutableList()
         } else mutableListOf()
 
         // tokenize the input prompt
@@ -535,8 +533,8 @@ object Main {
                         print(buffer.toString())
                     }
                     // asking user input
-                    var line = ""
-                    var anotherLine = true
+                    var line: String
+                    var anotherLine: Boolean
                     do {
                         line = scanner.nextLine()
                         anotherLine = line.trimEnd().lastOrNull() == '\\'

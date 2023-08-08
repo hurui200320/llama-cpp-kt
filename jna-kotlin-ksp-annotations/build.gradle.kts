@@ -1,6 +1,5 @@
 plugins {
     kotlin("jvm")
-    `maven-publish`
 }
 
 repositories {
@@ -17,15 +16,4 @@ kotlin {
 
 tasks.test {
     useJUnitPlatform()
-}
-
-publishing {
-    publications {
-        create<MavenPublication>("jna-kotlin-ksp-annotations") {
-            groupId = project.group as String
-            artifactId = project.name
-            version = project.version as String
-            from(components["java"])
-        }
-    }
 }

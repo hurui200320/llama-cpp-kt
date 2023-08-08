@@ -3,9 +3,6 @@ plugins {
     `maven-publish`
 }
 
-group = "info.skyblond"
-version = "1.0-SNAPSHOT"
-
 repositories {
     mavenCentral()
 }
@@ -25,4 +22,15 @@ kotlin {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("jna-kotlin-ksp") {
+            groupId = project.group as String
+            artifactId = project.name
+            version = project.version as String
+            from(components["java"])
+        }
+    }
 }

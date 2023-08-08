@@ -4,15 +4,17 @@ plugins {
     `maven-publish`
 }
 
-group = "info.skyblond"
-version = "1.0-SNAPSHOT"
+allprojects {
+    group = "info.skyblond"
+    version = "0.0.1"
+}
 
 repositories {
     mavenCentral()
 }
 
 dependencies {
-    api("net.java.dev.jna:jna:5.+")
+    api("net.java.dev.jna:jna:5.13.0")
 
     implementation(project(":jna-kotlin-ksp-annotations"))
     ksp(project(":jna-kotlin-ksp"))
@@ -26,4 +28,15 @@ tasks.test {
 
 kotlin {
     jvmToolchain(17)
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("llama-cpp-kt") {
+            groupId = project.group as String
+            artifactId = project.name
+            version = project.version as String
+            from(components["java"])
+        }
+    }
 }

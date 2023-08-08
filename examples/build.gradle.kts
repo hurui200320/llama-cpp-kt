@@ -2,9 +2,6 @@ plugins {
     kotlin("jvm")
 }
 
-group = "info.skyblond"
-version = "1.0-SNAPSHOT"
-
 repositories {
     mavenCentral()
 }
